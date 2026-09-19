@@ -1,157 +1,88 @@
-## `ApiKey_Scan` 是一个基于 Java 的 GitHub Code Search API Key 泄露检测工具，用于在**已获授权**的代码仓库范围内发现疑似云服务、AI 平台和其他 API 凭据，并输出 JSON 与 Markdown 报告。
+# ApiKey_Scan 项目泄露检查报告
 
-> 仅限安全测试、内部审计、应急响应和其他获得明确授权的场景。请勿使用本工具扫描无权访问的仓库、组织或个人数据。
+* **检查日期**：2026-09-19
+* **检查对象**：`ApiKey_Scan-20260919.zip` 及其解压后的项目文件
+* **检查范围**：Java 源码、测试代码、JSON 配置、PowerShell/CMD 脚本、README、JAR 包内容
+* **检查方式**：敏感凭据模式检索、配置审阅、JAR 条目检查、构建产物检查
 
-## 功能
+## 结论
 
-* 基于 GitHub Code Search 检索候选代码文件
-* 内置常见 API Key、Token、Secret 关键词池
-* 对候选内容进行规则匹配、上下文提取和风险评分
-* 支持增量状态，避免重复处理相同对象和内容
-* 输出 JSON、Markdown 两种报告格式
-* 支持自定义查询、阈值、查询数量、分页和请求间隔
-* 支持 `--dry-run`，在不访问 GitHub 的情况下预览查询
+在本次检查的项目文件中，**没有发现可确认的真实生产凭据**，包括 GitHub Token、AWS Access Key、Google API Key、Slack Token、私钥等。
 
-## 运行环境
+发现的是测试用的伪造 API Key 样例，以及一个需要重点修复的报告输出设计：Markdown 报告会把命中的候选 API Key 以明文写入文件。如果扫描到真实凭据，生成的 Markdown 报告本身就会成为一份新的敏感信息泄露副本。
 
-* Windows 10/11 或其他支持 PowerShell 的系统
-* Java 17 或更高版本，且 `java`、`javac`、`jar` 已加入 `PATH`
-* 一个具有适当 Code Search 权限的 GitHub Token
+## 发现项
 
-## 快速开始
+### [高风险] Markdown 报告明文输出候选 API Key
 
-### 1. 设置 GitHub Token
+**位置**：
 
-PowerShell：
+    src/main/java/cn/apikeyscan/report/ReportWriter.java
 
-    $env:GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxx"
+`markdown()` 方法使用 `f.rawValue()` 生成如下格式：
 
-CMD：
+    baseurl:<Base URL>;apikey:<API Key>
 
-    set GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
+这与 JSON 报告使用 `masked_value` 的做法不一致。当前 README 也声明报告中的敏感字段会脱敏，但实际 Markdown 报告并不会脱敏。
 
-也可以在命令行中使用 `--token`，但不建议把 Token 直接写入历史命令或脚本。
+**影响**：
 
-### 2. 启动扫描
+* 一旦扫描到真实 API Key，`reports/ApiKey_Scan-report-*.md` 会保存完整凭据。
+* 报告可能被提交到 Git、同步到云盘、发送到聊天工具或写入备份，从而扩大泄露范围。
+* 任何能够读取报告的人都可能直接获得可用凭据。
 
-推荐使用启动脚本，脚本会在缺少 JAR 时自动构建：
+**建议**：
 
-    .\run.ps1
+1. Markdown 默认使用 `f.maskedValue()`，不要使用 `f.rawValue()`。
+2. 如确实需要内部取证，增加显式的本地开关，并默认关闭。
+3. 更新 `SelfTest.java`，验证 Markdown 不包含原始 Key。
+4. 修改 README，明确所有报告默认只保存脱敏值。
+5. 对现有 `reports/` 目录做一次凭据检查；如果已经产生过真实报告，应立即轮换其中的凭据。
 
-或：
+### [低风险] 测试代码包含伪造 API Key 样例
 
-    run.bat
+**位置**：
 
-直接运行 JAR：
+    src/test/java/cn/apikeyscan/SelfTest.java
 
-    java -jar .\build\ApiKey_Scan.jar --root .
+其中包含 `sk-` 开头的固定字符串，用于测试 DeepSeek、百炼和 Moonshot 的识别与脱敏逻辑。这些值呈现出明显的重复十六进制模式，属于测试夹具，未发现其为真实可用凭据。
 
-首次运行前也可以手动构建：
+**建议**：
 
-    .\build.ps1
+* 将测试值替换为更明显的占位符，或在运行时生成随机测试值。
+* 如果项目要提交到公开仓库，避免使用看起来像真实凭据的固定前缀和长度。
+* 在 Secret Scanning 规则中将测试目录作为已知测试样例处理，但不要因此忽略其他目录的真实命中。
 
-## 常用命令
+### [低风险] JAR 内存在旧包名的遗留编译类
 
-预览将要执行的查询，不访问 GitHub：
+原压缩包中的 `build/ApiKey_Scan.jar` 同时包含：
 
-    .\run.ps1 --dry-run
+    cn/apikeyscan/...
+    cn/leakscanner/...
 
-指定输出目录：
+这不是凭据泄露，但说明 JAR 曾使用未清理的旧编译目录打包，可能导致旧代码残留、版本混淆或审计困难。发布前应清空 `build/classes` 后重新构建。
 
-    .\run.ps1 --output .\reports
+## 已检查且未发现真实值的模式
 
-提高或降低报告阈值：
+在项目文本文件和 JAR 内容中未发现以下类型的真实凭据：
 
-    .\run.ps1 --min-score 80
+* GitHub `ghp_...` 或 `github_pat_...` Token
+* AWS `AKIA...` Access Key
+* Google `AIza...` API Key
+* Slack `xox...` Token
+* PEM/RSA/OpenSSH/EC/DSA 私钥块
+* 明显的生产密码、Bearer Token 或固定访问密钥
 
-追加自定义查询：
+README 中出现的 `ghp_xxxxxxxxxxxxxxxxxxxx` 是示例占位符；测试代码中的 `sk-...` 是固定测试夹具，不应当被当作已验证的生产凭据。
 
-    .\run.ps1 --query '"sk-" extension:env'
+## 建议的修复优先级
 
-允许包含 fork 仓库：
+1. **立即**：停止把 `rawValue` 写入 Markdown 报告，重新构建 JAR。
+2. **立即**：检查并清理已有 `reports/`、压缩包和备份中的真实扫描结果。
+3. **随后**：把 SelfTest 中的固定 Key 改为明显占位符或运行时随机值。
+4. **发布前**：清空旧编译目录，重新生成 JAR，并确认 JAR 中只存在 `cn/apikeyscan` 包。
+5. **发布前**：对最终 ZIP 运行一次 Secret Scanning，并确认没有 `.env`、Token、私钥或历史报告文件。
 
-    .\run.ps1 --include-forks
+## 限制
 
-## 命令行参数
-
-| 参数  | 说明  | 默认值 |
-| --- | --- | --- |
-| `--root <dir>` | 词池和运行数据根目录 | 当前目录 |
-| `--output <dir>` | 报告输出目录 | `<root>/reports` |
-| `--state <file>` | 增量状态文件 | `<root>/.ApiKey_Scan/state.json` |
-| `--token <token>` | GitHub Token | 优先读取 `GITHUB_TOKEN` 或 `GH_TOKEN` |
-| `--min-score <0-100>` | 报告评分阈值 | `70` |
-| `--max-queries <n>` | 单次最大查询数 | `60` |
-| `--max-results-per-query <n>` | 每条查询最多处理结果数 | `30` |
-| `--per-page <1-100>` | GitHub 每页结果数 | `30` |
-| `--delay-ms <ms>` | 搜索请求间隔 | `6500` |
-| `--query <query>` | 追加自定义查询，可重复 | 无   |
-| `--include-forks` | 不过滤 fork 仓库 | 关闭  |
-| `--dry-run` | 只生成查询，不访问 GitHub | 关闭  |
-| `--help` / `-h` | 显示帮助 | -   |
-
-## 输出文件
-
-默认输出到 `reports/`：
-
-* `ApiKey_Scan-report-*.json`：结构化报告，便于二次处理
-* `ApiKey_Scan-report-*.md`：可读的 Markdown 报告
-* `.ApiKey_Scan/state.json`：增量扫描状态，请妥善保存
-
-报告中的 Token、Secret 等敏感字段会按程序规则脱敏；但报告本身仍可能包含仓库地址、路径和代码上下文，请按敏感数据管理。
-
-## 目录结构
-
-    ApiKey_Scan/
-    ├─ build/ApiKey_Scan.jar
-    ├─ run.bat
-    ├─ run.ps1
-    ├─ build.ps1
-    ├─ test.ps1
-    ├─ common/
-    │  ├─ config_files.json
-    │  ├─ endpoint.json
-    │  └─ key_words.json
-    ├─ providers/
-    │  ├─ aliyun.json
-    │  ├─ deepseek.json
-    │  └─ moonshot.json
-    ├─ src/
-    │  ├─ main/java/
-    │  └─ test/java/
-    └─ readme.md
-
-## 构建与测试
-
-构建发布 JAR：
-
-    .\build.ps1
-
-运行自测：
-
-    .\test.ps1
-
-构建产物位于：
-
-    build/ApiKey_Scan.jar
-
-## 配置说明
-
-* `common/key_words.json`：关键词、正则和评分规则
-* `common/config_files.json`：配置文件识别规则
-* `common/endpoint.json`：端点和 URL 相关规则
-* `providers/*.json`：不同服务商的补充规则
-
-修改配置后无需修改 Java 源码，重新运行即可使用新的规则。
-
-## 安全建议
-
-1. 使用最小权限 Token，并设置合理的有效期。
-2. 不要把 Token 写入 README、配置文件、批处理脚本或 Git 仓库。
-3. 报告应存放在受控目录，必要时加密传输和归档。
-4. 发现真实泄露后，应立即撤销或轮换凭据，并通知相关服务商和仓库所有者。
-5. 遵守 GitHub 服务条款、组织安全策略和适用法律法规。
-
-## 免责声明
-
-ApiKey_Scan 仅提供辅助检测能力，不保证发现全部秘密，也不保证每个命中都是真实凭据。使用者应对扫描范围、授权、结果判断和后续处置承担全部责任。
+本报告只覆盖当前压缩包和解压后的文件内容，不能证明项目历史提交、Git reflog、云盘历史版本、外部备份或曾经生成的报告中不存在凭据。如果该项目曾经使用过真实 Token，仍应检查 Git 历史和备份，并在无法确认安全时轮换相关凭据。
