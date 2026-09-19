@@ -1,4 +1,4 @@
-`ApiKey_Scan` 是一个基于 Java 的 GitHub Code Search API Key 泄露检测工具，用于在**已获授权**的代码仓库范围内发现疑似云服务、AI 平台和其他 API 凭据，并输出 JSON 与 Markdown 报告。
+## `ApiKey_Scan` 是一个基于 Java 的 GitHub Code Search API Key 泄露检测工具，用于在**已获授权**的代码仓库范围内发现疑似云服务、AI 平台和其他 API 凭据，并输出 JSON 与 Markdown 报告。
 
 > 仅限安全测试、内部审计、应急响应和其他获得明确授权的场景。请勿使用本工具扫描无权访问的仓库、组织或个人数据。
 
