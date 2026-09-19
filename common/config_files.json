@@ -1,0 +1,12 @@
+[
+  ".env",
+  ".env.local",
+  "config.yaml",
+  "config.yml",
+  "application.yml",
+  "application.properties",
+  "settings.py",
+  "docker-compose.yml",
+  "conf.json",
+  "config.json"
+]

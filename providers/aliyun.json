@@ -1,0 +1,19 @@
+{
+  "provider": "阿里云通义千问（DashScope/百炼）",
+  "env_vars": [
+    "DASHSCOPE_API_KEY",
+    "DASHSCOPE_KEY",
+    "QWEN_API_KEY",
+    "QWEN_KEY",
+    "ALIYUN_API_KEY",
+    "ALI_API_KEY",
+    "ALIBABA_API_KEY",
+    "BAILIAN_API_KEY"
+  ],
+  "keywords": [
+    "百炼",
+    "通义千问",
+    "dashscope",
+    "qwen"
+  ]
+}

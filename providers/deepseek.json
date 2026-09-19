@@ -1,0 +1,12 @@
+{
+  "provider": "DeepSeek",
+  "env_vars": [
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_KEY",
+    "DEEPSEEK_TOKEN",
+    "DEEPSEEK_SECRET"
+  ],
+  "keywords": [
+    "deepseek"
+  ]
+}
